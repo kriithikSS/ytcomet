@@ -1,32 +1,37 @@
-from flask import Flask, request, jsonify, send_file, send_from_directory, Response
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 import yt_dlp
 import os
+import shutil
 import threading
 import time
-import json
 from collections import defaultdict
 
 # ✅ Initialize Flask
 app = Flask(__name__)
 CORS(app)
 
-# ✅ Define paths
+# ✅ Define Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_FOLDER = os.path.abspath(os.path.join(BASE_DIR, "../frontend"))
 DOWNLOADS_FOLDER = os.path.join(BASE_DIR, "downloads")
 os.makedirs(DOWNLOADS_FOLDER, exist_ok=True)
 
-# ✅ Load cookies from Render Secret Files
-COOKIES_PATH = "/etc/secrets/cookies.txt"  # Path where Render stores secret files
+# ✅ Handle Cookies File
+SECRET_COOKIES_PATH = "/etc/secrets/cookies.txt"  # Read-only secret file in Render
+WRITABLE_COOKIES_PATH = "/tmp/cookies.txt"  # Copy to a writable location
 
-# ✅ Debug: Check if cookies.txt exists
-print(f"📂 Checking cookies file: {COOKIES_PATH}, Exists: {os.path.exists(COOKIES_PATH)}")
+# ✅ Copy cookies file to a writable location
+if os.path.exists(SECRET_COOKIES_PATH):
+    shutil.copy(SECRET_COOKIES_PATH, WRITABLE_COOKIES_PATH)
+    print(f"📂 Copied cookies.txt to {WRITABLE_COOKIES_PATH}")
+else:
+    print("❌ No cookies.txt found in /etc/secrets")
 
-# ✅ Global dictionary to store download progress for each URL
+# ✅ Global Dictionary for Download Progress
 download_progress = defaultdict(lambda: {"progress": 0, "timestamp": time.time()})
 
-# ✅ Clean up old progress entries periodically
+# ✅ Clean Up Old Progress Data
 def cleanup_progress_data():
     while True:
         current_time = time.time()
@@ -35,10 +40,10 @@ def cleanup_progress_data():
             del download_progress[url]
         time.sleep(300)
 
-# Start the cleanup thread
+# Start Cleanup Thread
 threading.Thread(target=cleanup_progress_data, daemon=True).start()
 
-# ✅ Custom progress hook for yt-dlp
+# ✅ Custom Progress Hook
 def progress_hook(d):
     if d['status'] == 'downloading':
         url = d.get('info_dict', {}).get('webpage_url', 'unknown')
@@ -55,7 +60,7 @@ def progress_hook(d):
             "eta": d.get('eta', 0)
         }
 
-# ✅ Function to delete file after ensuring it's fully sent
+# ✅ Function to Delete Files After Sending
 def delayed_delete(filepath):
     time.sleep(60)
     try:
@@ -64,17 +69,17 @@ def delayed_delete(filepath):
     except Exception as e:
         print(f"⚠️ Error deleting file: {e}")
 
-# ✅ Serve `index.html` (Frontend UI)
+# ✅ Root Route (Backend Status)
 @app.route("/")  
 def home():
     return jsonify({"message": "YTCOMET Backend is Running!", "status": "success"}), 200
 
-# ✅ Serve static files (`style.css`, `script.js`)
+# ✅ Serve Static Files
 @app.route("/<path:filename>")
 def serve_static_files(filename):
     return send_from_directory(FRONTEND_FOLDER, filename), 200
 
-# ✅ Serve downloaded files properly
+# ✅ Serve Downloaded Files
 @app.route("/downloads/<filename>")
 def serve_download(filename):
     file_path = os.path.join(DOWNLOADS_FOLDER, filename)
@@ -85,7 +90,7 @@ def serve_download(filename):
     
     return jsonify({"error": "File not found!"}), 500
 
-# ✅ Add route to check download progress
+# ✅ Check Download Progress
 @app.route('/progress', methods=['POST'])
 def check_progress():
     data = request.json
@@ -97,7 +102,7 @@ def check_progress():
     progress_data = download_progress.get(video_url, {"progress": 0})
     return jsonify(progress_data)
 
-# ✅ Function to find the closest available MP3 bitrate
+# ✅ Find Best Audio Format
 def find_best_audio_format(video_url, preferred_quality):
     with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
         info = ydl.extract_info(video_url, download=False)
@@ -106,7 +111,7 @@ def find_best_audio_format(video_url, preferred_quality):
     bitrate_map = {"128k": "140", "192k": "251", "320k": "256"}
     return bitrate_map.get(preferred_quality, available_formats[-1] if available_formats else "bestaudio/best")
 
-# ✅ Download video route (Handles MP3 & MP4 downloads, and playlists)
+# ✅ Download Video (Handles MP3 & MP4)
 @app.route('/download', methods=['POST'])
 def download_video():
     data = request.json
@@ -120,7 +125,9 @@ def download_video():
     download_progress[video_url] = {"progress": 0, "timestamp": time.time()}
     output_template = os.path.join(DOWNLOADS_FOLDER, "%(title)s_" + quality + ".%(ext)s")
 
-    # ✅ Improved yt-dlp Download Options
+    # ✅ yt-dlp Download Options
+    cookies_option = WRITABLE_COOKIES_PATH if os.path.exists(WRITABLE_COOKIES_PATH) else None
+
     if format_type == "mp3":
         best_audio_format = find_best_audio_format(video_url, quality)
         options = {
@@ -130,7 +137,7 @@ def download_video():
             "noplaylist": False,
             "retries": 5,
             "socket_timeout": 30,
-            "cookiefile": COOKIES_PATH if os.path.exists(COOKIES_PATH) else None,  # ✅ Use cookies.txt if available
+            "cookiefile": cookies_option,  # ✅ Use copied cookies.txt
             "progress_hooks": [progress_hook],
         }
     else:
@@ -142,7 +149,7 @@ def download_video():
             "noplaylist": False,
             "retries": 5,
             "socket_timeout": 30,
-            "cookiefile": COOKIES_PATH if os.path.exists(COOKIES_PATH) else None,  # ✅ Use cookies.txt if available
+            "cookiefile": cookies_option,  # ✅ Use copied cookies.txt
             "progress_hooks": [progress_hook],
         }
 
@@ -170,6 +177,6 @@ def download_video():
         print(f"❌ Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-# ✅ Run the Flask app
+# ✅ Run Flask App
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000, debug=True)
