@@ -77,9 +77,10 @@ def delayed_delete(filepath):
         print(f"⚠️ Error deleting file: {e}")
 
 # ✅ Serve `index.html` (Frontend UI)
-@app.route("/")
+@app.route("/")  
 def home():
-    return send_from_directory(FRONTEND_FOLDER, "index.html")
+    return jsonify({"message": "YTCOMET Backend is Running!", "status": "success"}), 200
+
 
 # ✅ Serve static files (`style.css`, `script.js`)
 @app.route("/<path:filename>")
