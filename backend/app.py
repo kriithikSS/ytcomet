@@ -18,7 +18,10 @@ DOWNLOADS_FOLDER = os.path.join(BASE_DIR, "downloads")
 os.makedirs(DOWNLOADS_FOLDER, exist_ok=True)
 
 # ✅ Load cookies from Render Secret Files
-COOKIES_PATH = "/etc/secrets/cookies.txt"  # Secret file location
+COOKIES_PATH = "/etc/secrets/cookies.txt"  # Path where Render stores secret files
+
+# ✅ Debug: Check if cookies.txt exists
+print(f"📂 Checking cookies file: {COOKIES_PATH}, Exists: {os.path.exists(COOKIES_PATH)}")
 
 # ✅ Global dictionary to store download progress for each URL
 download_progress = defaultdict(lambda: {"progress": 0, "timestamp": time.time()})
@@ -127,7 +130,7 @@ def download_video():
             "noplaylist": False,
             "retries": 5,
             "socket_timeout": 30,
-            "cookies": COOKIES_PATH if os.path.exists(COOKIES_PATH) else None,  # ✅ Use cookies.txt if available
+            "cookiefile": COOKIES_PATH if os.path.exists(COOKIES_PATH) else None,  # ✅ Use cookies.txt if available
             "progress_hooks": [progress_hook],
         }
     else:
@@ -139,7 +142,7 @@ def download_video():
             "noplaylist": False,
             "retries": 5,
             "socket_timeout": 30,
-            "cookies": COOKIES_PATH if os.path.exists(COOKIES_PATH) else None,  # ✅ Use cookies.txt if available
+            "cookiefile": COOKIES_PATH if os.path.exists(COOKIES_PATH) else None,  # ✅ Use cookies.txt if available
             "progress_hooks": [progress_hook],
         }
 
